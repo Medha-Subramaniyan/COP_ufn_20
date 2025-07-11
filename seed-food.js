@@ -1,5 +1,6 @@
 // seed-food.js
 require('dotenv').config();
+const mongoose = require('mongoose');
 const User = require('./models/User');
 const Food = require('./models/Food');
 
@@ -71,6 +72,22 @@ const sampleFoods = [
 
 async function seedFood() {
   try {
+    console.log('🔍 Connecting to MongoDB...');
+    
+    // Ensure we have a MongoDB URI
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI not found in environment variables');
+    }
+    
+    // Connect to MongoDB with explicit connection
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000, // 10 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+    });
+    
+    console.log('✅ Connected to MongoDB');
     console.log('🌱 Seeding food records...');
     
     // Get a user to associate food with
@@ -81,8 +98,8 @@ async function seedFood() {
     }
     
     // Clear existing food records for this user
-    await Food.deleteMany({ user: user._id });
-    console.log('✅ Cleared existing food records');
+    const deleteResult = await Food.deleteMany({ user: user._id });
+    console.log(`✅ Cleared ${deleteResult.deletedCount} existing food records`);
     
     // Insert new food records
     const foodRecords = sampleFoods.map(food => ({
@@ -98,10 +115,17 @@ async function seedFood() {
     });
     
     console.log('🎉 Food seeding completed!');
-    process.exit(0);
+    
   } catch (error) {
-    console.error('❌ Error seeding food:', error);
-    process.exit(1);
+    console.error('❌ Error seeding food:', error.message);
+    console.error('Full error:', error);
+  } finally {
+    // Always close the connection
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.close();
+      console.log('🔒 Database connection closed');
+    }
+    process.exit(0);
   }
 }
 

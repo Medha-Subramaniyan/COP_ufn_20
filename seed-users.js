@@ -1,5 +1,6 @@
 // seed-users.js
 require('dotenv').config();
+const mongoose = require('mongoose');
 const User = require('./models/User');
 
 const sampleUsers = [
@@ -39,11 +40,27 @@ const sampleUsers = [
 
 async function seedUsers() {
   try {
+    console.log('🔍 Connecting to MongoDB...');
+    
+    // Ensure we have a MongoDB URI
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI not found in environment variables');
+    }
+    
+    // Connect to MongoDB with explicit connection
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000, // 10 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+    });
+    
+    console.log('✅ Connected to MongoDB');
     console.log('🌱 Seeding users...');
     
     // Clear existing users
-    await User.deleteMany({});
-    console.log('✅ Cleared existing users');
+    const deleteResult = await User.deleteMany({});
+    console.log(`✅ Cleared ${deleteResult.deletedCount} existing users`);
     
     // Insert new users
     const users = await User.insertMany(sampleUsers);
@@ -54,10 +71,17 @@ async function seedUsers() {
     });
     
     console.log('🎉 User seeding completed!');
-    process.exit(0);
+    
   } catch (error) {
-    console.error('❌ Error seeding users:', error);
-    process.exit(1);
+    console.error('❌ Error seeding users:', error.message);
+    console.error('Full error:', error);
+  } finally {
+    // Always close the connection
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.close();
+      console.log('🔒 Database connection closed');
+    }
+    process.exit(0);
   }
 }
 

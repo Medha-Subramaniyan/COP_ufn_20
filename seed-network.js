@@ -1,10 +1,27 @@
 // seed-network.js
 require('dotenv').config();
+const mongoose = require('mongoose');
 const User = require('./models/User');
 const Network = require('./models/Network');
 
 async function seedNetwork() {
   try {
+    console.log('🔍 Connecting to MongoDB...');
+    
+    // Ensure we have a MongoDB URI
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI not found in environment variables');
+    }
+    
+    // Connect to MongoDB with explicit connection
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000, // 10 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+    });
+    
+    console.log('✅ Connected to MongoDB');
     console.log('🌱 Seeding network relationships...');
     
     // Get all users
@@ -15,8 +32,8 @@ async function seedNetwork() {
     }
     
     // Clear existing network relationships
-    await Network.deleteMany({});
-    console.log('✅ Cleared existing network relationships');
+    const deleteResult = await Network.deleteMany({});
+    console.log(`✅ Cleared ${deleteResult.deletedCount} existing network relationships`);
     
     // Create some sample relationships
     const relationships = [
@@ -47,10 +64,17 @@ async function seedNetwork() {
     }
     
     console.log('🎉 Network seeding completed!');
-    process.exit(0);
+    
   } catch (error) {
-    console.error('❌ Error seeding network:', error);
-    process.exit(1);
+    console.error('❌ Error seeding network:', error.message);
+    console.error('Full error:', error);
+  } finally {
+    // Always close the connection
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.close();
+      console.log('🔒 Database connection closed');
+    }
+    process.exit(0);
   }
 }
 
