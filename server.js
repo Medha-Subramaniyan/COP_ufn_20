@@ -10,8 +10,10 @@ const ufnConn = require('./db');
 const User    = require('./models/User');
 const Food    = require('./models/Food');
 const Network = require('./models/Network');
-// If you still use Card, keep this:
-// const Card = require('./models/Card');
+const Card = require('./models/Card');
+
+// Import Cloudinary configuration
+const { cloudinary, upload } = require('./config/cloudinary');
 
 const app = express();
 app.use(cors());
@@ -140,6 +142,146 @@ app.get('/api/following/:userId', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not fetch following' });
+  }
+});
+
+// ─── Image Upload Endpoints
+
+// Upload profile picture
+app.post('/api/upload-profile-pic/:userId', upload.single('profilePic'), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Update user's profile picture URL in database
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { profilePic: req.file.path },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      message: 'Profile picture uploaded successfully',
+      profilePicUrl: req.file.path,
+      user: {
+        id: updatedUser._id,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        email: updatedUser.email,
+        profilePic: updatedUser.profilePic
+      },
+      error: ''
+    });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Failed to upload profile picture' });
+  }
+});
+
+// Delete profile picture
+app.delete('/api/delete-profile-pic/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Delete from Cloudinary if exists
+    if (user.profilePic) {
+      const publicId = user.profilePic.split('/').pop().split('.')[0];
+      await cloudinary.uploader.destroy(`profile_pictures/${publicId}`);
+    }
+
+    // Update user in database
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { profilePic: null },
+      { new: true }
+    );
+
+    res.json({
+      message: 'Profile picture deleted successfully',
+      user: {
+        id: updatedUser._id,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        email: updatedUser.email,
+        profilePic: updatedUser.profilePic
+      },
+      error: ''
+    });
+  } catch (err) {
+    console.error('Delete error:', err);
+    res.status(500).json({ error: 'Failed to delete profile picture' });
+  }
+});
+
+// Get user profile (including profile picture)
+app.get('/api/user/:userId', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        profilePic: user.profilePic,
+        bio: user.bio,
+        createdAt: user.createdAt
+      },
+      error: ''
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not fetch user profile' });
+  }
+});
+
+// Update user profile
+app.put('/api/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { firstName, lastName, bio } = req.body;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { firstName, lastName, bio },
+      { new: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: {
+        id: updatedUser._id,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        email: updatedUser.email,
+        profilePic: updatedUser.profilePic,
+        bio: updatedUser.bio
+      },
+      error: ''
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not update profile' });
   }
 });
 
