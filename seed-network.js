@@ -1,10 +1,10 @@
 // seed-network.js
 require('dotenv').config();
 const mongoose = require('mongoose');
-const User = require('./models/User');
-const Network = require('./models/Network');
 
 async function seedNetwork() {
+  let conn;
+  
   try {
     console.log('🔍 Connecting to MongoDB...');
     
@@ -13,30 +13,67 @@ async function seedNetwork() {
       throw new Error('MONGODB_URI not found in environment variables');
     }
     
-    // Connect to MongoDB with explicit connection
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000, // 10 seconds
-      socketTimeoutMS: 45000, // 45 seconds
+    // Create a fresh connection
+    conn = mongoose.createConnection(process.env.MONGODB_URI, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    
+    // Wait for connection
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Connection timeout'));
+      }, 10000);
+      
+      conn.once('connected', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+      
+      conn.once('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
     
     console.log('✅ Connected to MongoDB');
-    console.log('🌱 Seeding network relationships...');
+    
+    // Define models inline
+    const UserSchema = new mongoose.Schema({
+      firstName:  { type: String, required: true },
+      lastName:   { type: String, required: true },
+      email:      { type: String, required: true, unique: true },
+      password:   { type: String, required: true },
+      profilePic: { type: String },
+      bio:        { type: String },
+      createdAt:  { type: Date,   default: Date.now }
+    });
+    
+    const NetworkSchema = new mongoose.Schema({
+      followerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      followingId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      createdAt:   { type: Date, default: Date.now }
+    });
+    
+    const User = conn.model('User', UserSchema);
+    const Network = conn.model('Network', NetworkSchema);
+    
+    console.log('🌱 Seeding network connections...');
+    
+    // Clear existing network data
+    const deleteResult = await Network.deleteMany({});
+    console.log(`✅ Cleared ${deleteResult.deletedCount} existing network connections`);
     
     // Get all users
     const users = await User.find({});
     if (users.length < 2) {
-      console.error('❌ Need at least 2 users. Please run seed-users first.');
-      process.exit(1);
+      console.log('⚠️  Need at least 2 users to create network connections. Please seed users first.');
+      return;
     }
     
-    // Clear existing network relationships
-    const deleteResult = await Network.deleteMany({});
-    console.log(`✅ Cleared ${deleteResult.deletedCount} existing network relationships`);
-    
-    // Create some sample relationships
-    const relationships = [
+    // Create sample network connections
+    const sampleNetworks = [
       // John follows Jane and Mike
       { followerId: users[0]._id, followingId: users[1]._id }, // John -> Jane
       { followerId: users[0]._id, followingId: users[2]._id }, // John -> Mike
@@ -53,14 +90,14 @@ async function seedNetwork() {
       { followerId: users[3]._id, followingId: users[1]._id }, // Sarah -> Jane
     ];
     
-    const networkRecords = await Network.insertMany(relationships);
-    console.log(`✅ Inserted ${networkRecords.length} network relationships:`);
+    // Create network connections
+    const networks = await Network.insertMany(sampleNetworks);
+    console.log(`✅ Inserted ${networks.length} network connections:`);
     
-    // Display the relationships
-    for (const record of networkRecords) {
-      const follower = users.find(u => u._id.toString() === record.followerId.toString());
-      const following = users.find(u => u._id.toString() === record.followingId.toString());
-      console.log(`   - ${follower.firstName} ${follower.lastName} follows ${following.firstName} ${following.lastName}`);
+    for (const network of networks) {
+      const follower = users.find(u => u._id.equals(network.followerId));
+      const following = users.find(u => u._id.equals(network.followingId));
+      console.log(`   - ${follower?.firstName} ${follower?.lastName} follows ${following?.firstName} ${following?.lastName}`);
     }
     
     console.log('🎉 Network seeding completed!');
@@ -70,8 +107,8 @@ async function seedNetwork() {
     console.error('Full error:', error);
   } finally {
     // Always close the connection
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.connection.close();
+    if (conn && conn.readyState === 1) {
+      await conn.close();
       console.log('🔒 Database connection closed');
     }
     process.exit(0);

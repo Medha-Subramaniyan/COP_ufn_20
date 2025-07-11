@@ -192,16 +192,16 @@ npm start
 
 1. **Upload Profile Picture**:
    - Method: POST
-   - URL: `http://localhost:5000/api/upload-profile-pic/USER_ID`
+   - URL: `http://localhost:3000/api/upload-profile-pic/USER_ID`
    - Body: form-data with key `profilePic` and file value
 
 2. **Delete Profile Picture**:
    - Method: DELETE
-   - URL: `http://localhost:5000/api/delete-profile-pic/USER_ID`
+   - URL: `http://localhost:3000/api/delete-profile-pic/USER_ID`
 
 3. **Get User Profile**:
    - Method: GET
-   - URL: `http://localhost:5000/api/user/USER_ID`
+   - URL: `http://localhost:3000/api/user/USER_ID`
 
 #### Using curl
 
@@ -209,11 +209,11 @@ npm start
 # Upload profile picture
 curl -X POST \
   -F "profilePic=@/path/to/image.jpg" \
-  http://localhost:5000/api/upload-profile-pic/USER_ID
+  http://localhost:3000/api/upload-profile-pic/USER_ID
 
 # Delete profile picture
 curl -X DELETE \
-  http://localhost:5000/api/delete-profile-pic/USER_ID
+  http://localhost:3000/api/delete-profile-pic/USER_ID
 ```
 
 ### Method 3: Test Configuration Endpoint
@@ -230,7 +230,7 @@ app.get('/api/test-cloudinary', (req, res) => {
 });
 ```
 
-Then visit: `http://localhost:5000/api/test-cloudinary`
+Then visit: `http://localhost:3000/api/test-cloudinary`
 
 **Expected Response:**
 ```json

@@ -1,41 +1,22 @@
-const mongoose = require('mongoose');
+// models/Food.js
+const { Schema } = require('mongoose');
+const ufnConn = require('../db');
 
-const foodSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+module.exports = ufnConn.model('Food', new Schema({
+  user:        { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  foodName:    { type: String, required: true },
+  calories:    { type: Number },
+  protein:     { type: Number },
+  carbs:       { type: Number },
+  fats:        { type: Number },
+  portionSize: { type: String },
+  mealTime:    { 
+    type: String, 
+    enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+    required: true,
+    default: 'breakfast'
   },
-  foodName: {
-    type: String,
-    required: true
-  },
-  calories: {
-    type: Number,
-    required: true
-  },
-  protein: {
-    type: Number,
-    required: true
-  },
-  carbs: {
-    type: Number,
-    required: true
-  },
-  fats: {
-    type: Number,
-    required: true
-  },
-  portionSize: {
-    type: String,
-    required: true
-  },
-  date: {
-    type: Date,
-    default: Date.now
-  }
-}, {
-  timestamps: true
-});
-
-module.exports = mongoose.model('Food', foodSchema); 
+  meal: { type: require('mongoose').Schema.Types.ObjectId, ref: 'Meal' },
+  date:        { type: Date },     // when they ate it
+  createdAt:   { type: Date, default: Date.now }
+}));

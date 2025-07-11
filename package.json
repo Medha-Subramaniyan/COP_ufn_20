@@ -4,7 +4,6 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "seed": "node seed.js",
     "seed-users": "node seed-users.js",
     "seed-food": "node seed-food.js",
     "seed-network": "node seed-network.js",

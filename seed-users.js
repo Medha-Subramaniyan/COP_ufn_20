@@ -1,7 +1,6 @@
 // seed-users.js
 require('dotenv').config();
 const mongoose = require('mongoose');
-const User = require('./models/User');
 
 const sampleUsers = [
   {
@@ -39,6 +38,8 @@ const sampleUsers = [
 ];
 
 async function seedUsers() {
+  let conn;
+  
   try {
     console.log('🔍 Connecting to MongoDB...');
     
@@ -47,15 +48,45 @@ async function seedUsers() {
       throw new Error('MONGODB_URI not found in environment variables');
     }
     
-    // Connect to MongoDB with explicit connection
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000, // 10 seconds
-      socketTimeoutMS: 45000, // 45 seconds
+    // Create a fresh connection
+    conn = mongoose.createConnection(process.env.MONGODB_URI, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    
+    // Wait for connection
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Connection timeout'));
+      }, 10000);
+      
+      conn.once('connected', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+      
+      conn.once('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
     
     console.log('✅ Connected to MongoDB');
+    
+    // Define User model inline
+    const UserSchema = new mongoose.Schema({
+      firstName:  { type: String, required: true },
+      lastName:   { type: String, required: true },
+      email:      { type: String, required: true, unique: true },
+      password:   { type: String, required: true },
+      profilePic: { type: String },
+      bio:        { type: String },
+      createdAt:  { type: Date,   default: Date.now }
+    });
+    
+    const User = conn.model('User', UserSchema);
+    
     console.log('🌱 Seeding users...');
     
     // Clear existing users
@@ -77,8 +108,8 @@ async function seedUsers() {
     console.error('Full error:', error);
   } finally {
     // Always close the connection
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.connection.close();
+    if (conn && conn.readyState === 1) {
+      await conn.close();
       console.log('🔒 Database connection closed');
     }
     process.exit(0);

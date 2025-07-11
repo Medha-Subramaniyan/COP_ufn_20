@@ -1,33 +1,14 @@
-const mongoose = require('mongoose');
+// models/User.js
+const { Schema } = require('mongoose');
+const ufnConn = require('../db');
 
-const userSchema = new mongoose.Schema({
-  firstName: {
-    type: String,
-    required: true
-  },
-  lastName: {
-    type: String,
-    required: true
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true
-  },
-  password: {
-    type: String,
-    required: true
-  },
-  profilePic: {
-    type: String,
-    default: ''
-  },
-  bio: {
-    type: String,
-    default: ''
-  }
-}, {
-  timestamps: true
-});
-
-module.exports = mongoose.model('User', userSchema); 
+module.exports = ufnConn.model('User', new Schema({
+  firstName:  { type: String, required: true },
+  lastName:   { type: String, required: true },
+  email:      { type: String, required: true, unique: true },
+  password:   { type: String, required: true },       // store hashed
+  profilePic: { type: String },                       // Cloudinary URL
+  bio:        { type: String },
+  createdAt:  { type: Date,   default: Date.now },
+  meals:      [{ type: Schema.Types.ObjectId, ref: 'Meal' }]
+}));

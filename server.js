@@ -2,15 +2,7 @@
 require('dotenv').config();
 const express  = require('express');
 const cors     = require('cors');
-
-// Import the User food network DB connection
-const ufnConn = require('./db');
-
-// Import models (register schemas)
-const User    = require('./models/User');
-const Food    = require('./models/Food');
-const Network = require('./models/Network');
-const Card = require('./models/Card');
+const mongoose = require('mongoose');
 
 // Import Cloudinary configuration
 const { cloudinary, upload } = require('./config/cloudinary');
@@ -26,6 +18,48 @@ if (!uri) {
   process.exit(1);
 }
 
+// Define schemas
+const UserSchema = new mongoose.Schema({
+  firstName:  { type: String, required: true },
+  lastName:   { type: String, required: true },
+  email:      { type: String, required: true, unique: true },
+  password:   { type: String, required: true },
+  profilePic: { type: String },
+  bio:        { type: String },
+  createdAt:  { type: Date,   default: Date.now }
+});
+
+const FoodSchema = new mongoose.Schema({
+  user:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  foodName:   { type: String, required: true },
+  calories:   { type: Number, required: true },
+  protein:    { type: Number, required: true },
+  carbs:      { type: Number, required: true },
+  fats:       { type: Number, required: true },
+  portionSize: { type: String, required: true },
+  mealTime:   { type: String, enum: ['breakfast', 'lunch', 'dinner', 'snack'], required: true },
+  date:       { type: Date, default: Date.now }
+});
+
+const NetworkSchema = new mongoose.Schema({
+  followerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  followingId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt:   { type: Date, default: Date.now }
+});
+
+const MealSchema = new mongoose.Schema({
+  user:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  mealTime: { type: String, enum: ['breakfast', 'lunch', 'dinner', 'snack'], required: true },
+  date:     { type: Date, required: true },
+  foods:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Food' }]
+});
+
+// Create models
+const User = mongoose.model('User', UserSchema);
+const Food = mongoose.model('Food', FoodSchema);
+const Network = mongoose.model('Network', NetworkSchema);
+const Meal = mongoose.model('Meal', MealSchema);
+
 // ─── API Endpoints 
 
 // Login
@@ -40,6 +74,8 @@ app.post('/api/login', async (req, res) => {
       email:     user.email,
       firstName: user.firstName,
       lastName:  user.lastName,
+      profilePic: user.profilePic,
+      bio:       user.bio,
       error:     ''
     });
   } catch (err) {
@@ -53,7 +89,7 @@ app.post('/api/login', async (req, res) => {
 // Create a new Food record
 app.post('/api/food', async (req, res) => {
   try {
-    const { userId, foodName, calories, protein, carbs, fats, portionSize, date } = req.body;
+    const { userId, foodName, calories, protein, carbs, fats, portionSize, mealTime, date } = req.body;
     const record = await Food.create({
       user:        userId,
       foodName:    foodName,
@@ -62,6 +98,7 @@ app.post('/api/food', async (req, res) => {
       carbs:       carbs,
       fats:        fats,
       portionSize: portionSize,
+      mealTime:    mealTime || 'breakfast',
       date:        date || new Date()
     });
     res.json({ id: record._id, error: '' });
@@ -80,6 +117,89 @@ app.get('/api/food/:userId', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not fetch food' });
+  }
+});
+
+// Get foods by mealTime for a user
+app.get('/api/food/:userId/meal/:mealTime', async (req, res) => {
+  try {
+    const { userId, mealTime } = req.params;
+    const { date } = req.query;
+    
+    // Build query
+    const query = { user: userId, mealTime: mealTime };
+    
+    // If date is provided, filter by date
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      query.date = { $gte: startOfDay, $lte: endOfDay };
+    }
+    
+    const foods = await Food.find(query).sort({ createdAt: -1 });
+    res.json({ foods, mealTime, error: '' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not fetch meals' });
+  }
+});
+
+// Get daily meal summary for a user
+app.get('/api/food/:userId/daily-summary', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { date } = req.query;
+    
+    // Use today if no date provided
+    const queryDate = date ? new Date(date) : new Date();
+    const startOfDay = new Date(queryDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(queryDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const foods = await Food.find({
+      user: userId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    }).sort({ createdAt: -1 });
+    
+    // Group by mealTime
+    const mealSummary = {
+      breakfast: [],
+      lunch: [],
+      dinner: [],
+      snack: []
+    };
+    
+    // Calculate totals
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFats = 0;
+    
+    foods.forEach(food => {
+      mealSummary[food.mealTime].push(food);
+      totalCalories += food.calories || 0;
+      totalProtein += food.protein || 0;
+      totalCarbs += food.carbs || 0;
+      totalFats += food.fats || 0;
+    });
+    
+    res.json({
+      date: queryDate.toISOString().split('T')[0],
+      meals: mealSummary,
+      totals: {
+        calories: totalCalories,
+        protein: totalProtein,
+        carbs: totalCarbs,
+        fats: totalFats
+      },
+      error: ''
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not fetch daily summary' });
   }
 });
 
@@ -285,8 +405,122 @@ app.put('/api/user/:userId', async (req, res) => {
   }
 });
 
+// ─── Meal Endpoints
+
+// Create a new Meal
+app.post('/api/meal', async (req, res) => {
+  try {
+    const { userId, mealTime, date, foods } = req.body; // foods: array of food objects
+
+    // Create Food documents first
+    const createdFoods = await Promise.all(
+      foods.map(food =>
+        Food.create({ ...food, user: userId })
+      )
+    );
+
+    // Create Meal document
+    const meal = await Meal.create({
+      user: userId,
+      mealTime,
+      date: date ? new Date(date) : new Date(),
+      foods: createdFoods.map(f => f._id)
+    });
+
+    // Optionally, update User and Food with meal reference
+    await User.findByIdAndUpdate(userId, { $push: { meals: meal._id } });
+    await Promise.all(
+      createdFoods.map(f => Food.findByIdAndUpdate(f._id, { meal: meal._id }))
+    );
+
+    res.json({ meal, error: '' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not create meal' });
+  }
+});
+
+// Get all meals for a user (optionally filter by date)
+app.get('/api/meals/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { date } = req.query;
+
+    const query = { user: userId };
+    if (date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      query.date = { $gte: start, $lte: end };
+    }
+
+    const meals = await Meal.find(query)
+      .populate('foods')
+      .sort({ date: -1, mealTime: 1 });
+
+    res.json({ meals, error: '' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not fetch meals' });
+  }
+});
+
+// Get a specific meal by ID
+app.get('/api/meal/:mealId', async (req, res) => {
+  try {
+    const meal = await Meal.findById(req.params.mealId)
+      .populate('foods')
+      .populate('user', 'firstName lastName email');
+
+    if (!meal) {
+      return res.status(404).json({ error: 'Meal not found' });
+    }
+
+    res.json({ meal, error: '' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not fetch meal' });
+  }
+});
+
+// ─── Test endpoint for Cloudinary
+app.get('/api/test-cloudinary', (req, res) => {
+  res.json({
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    configured: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)
+  });
+});
+
+// ─── Test endpoint for database
+app.get('/api/test-users', async (req, res) => {
+  try {
+    const userCount = await User.countDocuments();
+    const users = await User.find({}).select('firstName lastName email profilePic bio -_id').limit(5);
+    res.json({
+      userCount,
+      users,
+      error: ''
+    });
+  } catch (err) {
+    console.error('Test users error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Start Server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+const PORT = process.env.PORT || 3000;
+
+// Wait for database connection before starting server
+mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => {
+    console.log(`✅ Database connected to ${uri}`);
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('❌ Database connection error:', err);
+    process.exit(1);
+  });
