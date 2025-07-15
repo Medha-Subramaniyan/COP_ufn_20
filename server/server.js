@@ -1,4 +1,31 @@
-// server.js
+// server.js - INTEGRATED MEAL TRACKING SYSTEM
+// ============================================
+// OLD SYSTEM (COMMENTED OUT):
+// const express = require('express');
+// const bodyParser = require('body-parser');
+// const cors = require('cors');
+// require('dotenv').config();
+// const uri = process.env.MONGODB_URI;
+// const mongoose = require("mongoose");
+// mongoose.connect(uri)
+//   .then(() => console.log("Mongo DB connected"))
+//   .catch(err => console.log(err));
+// const app = express();
+// app.use(cors());
+// app.use(bodyParser.json());
+// app.use((req, res, next) => {
+//     res.setHeader('Access-Control-Allow-Origin', '*');
+//     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+//     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+//     next();
+// });
+// var api = require('./api.js');
+// api.setApp( app, mongoose );
+// app.listen(5000);
+
+// ============================================
+// NEW INTEGRATED MEAL TRACKING SYSTEM:
+
 require('dotenv').config();
 const express  = require('express');
 const cors     = require('cors');
@@ -10,6 +37,14 @@ const { cloudinary, upload } = require('./config/cloudinary');
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Enhanced CORS headers (keeping original functionality)
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    next();
+});
 
 // ─── Connect to MongoDB
 const uri = process.env.MONGODB_URI;
@@ -54,20 +89,11 @@ const MealSchema = new mongoose.Schema({
   foods:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Food' }]
 });
 
-const PostSchema = new mongoose.Schema({
-  user:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  image_url:  { type: String },
-  description: { type: String },
-  meal:       { type: mongoose.Schema.Types.ObjectId, ref: 'Meal', required: true },
-  date:       { type: Date, required: true }
-});
-
 // Create models
 const User = mongoose.model('User', UserSchema);
 const Food = mongoose.model('Food', FoodSchema);
 const Network = mongoose.model('Network', NetworkSchema);
 const Meal = mongoose.model('Meal', MealSchema);
-const Post = mongoose.model('Post', PostSchema);
 
 // ─── API Endpoints 
 
@@ -92,8 +118,6 @@ app.post('/api/login', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-
 
 // Create a new Food record
 app.post('/api/food', async (req, res) => {
@@ -209,6 +233,85 @@ app.get('/api/food/:userId/daily-summary', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not fetch daily summary' });
+  }
+});
+
+// ─── Meal Endpoints
+
+// Create a new Meal
+app.post('/api/meal', async (req, res) => {
+  try {
+    const { userId, mealTime, date, foods } = req.body; // foods: array of food objects
+
+    // Create Food documents first
+    const createdFoods = await Promise.all(
+      foods.map(food =>
+        Food.create({ ...food, user: userId })
+      )
+    );
+
+    // Create Meal document
+    const meal = await Meal.create({
+      user: userId,
+      mealTime,
+      date: date ? new Date(date) : new Date(),
+      foods: createdFoods.map(f => f._id)
+    });
+
+    // Optionally, update User and Food with meal reference
+    await User.findByIdAndUpdate(userId, { $push: { meals: meal._id } });
+    await Promise.all(
+      createdFoods.map(f => Food.findByIdAndUpdate(f._id, { meal: meal._id }))
+    );
+
+    res.json({ meal, error: '' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not create meal' });
+  }
+});
+
+// Get all meals for a user (optionally filter by date)
+app.get('/api/meals/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { date } = req.query;
+
+    const query = { user: userId };
+    if (date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      query.date = { $gte: start, $lte: end };
+    }
+
+    const meals = await Meal.find(query)
+      .populate('foods')
+      .sort({ date: -1, mealTime: 1 });
+
+    res.json({ meals, error: '' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not fetch meals' });
+  }
+});
+
+// Get a specific meal by ID
+app.get('/api/meal/:mealId', async (req, res) => {
+  try {
+    const meal = await Meal.findById(req.params.mealId)
+      .populate('foods')
+      .populate('user', 'firstName lastName email');
+
+    if (!meal) {
+      return res.status(404).json({ error: 'Meal not found' });
+    }
+
+    res.json({ meal, error: '' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not fetch meal' });
   }
 });
 
@@ -414,199 +517,6 @@ app.put('/api/user/:userId', async (req, res) => {
   }
 });
 
-// ─── Meal Endpoints
-
-// Create a new Meal
-app.post('/api/meal', async (req, res) => {
-  try {
-    const { userId, mealTime, date, foods } = req.body; // foods: array of food objects
-
-    // Create Food documents first
-    const createdFoods = await Promise.all(
-      foods.map(food =>
-        Food.create({ ...food, user: userId })
-      )
-    );
-
-    // Create Meal document
-    const meal = await Meal.create({
-      user: userId,
-      mealTime,
-      date: date ? new Date(date) : new Date(),
-      foods: createdFoods.map(f => f._id)
-    });
-
-    // Optionally, update User and Food with meal reference
-    await User.findByIdAndUpdate(userId, { $push: { meals: meal._id } });
-    await Promise.all(
-      createdFoods.map(f => Food.findByIdAndUpdate(f._id, { meal: meal._id }))
-    );
-
-    res.json({ meal, error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not create meal' });
-  }
-});
-
-// Get all meals for a user (optionally filter by date)
-app.get('/api/meals/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { date } = req.query;
-
-    const query = { user: userId };
-    if (date) {
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
-      query.date = { $gte: start, $lte: end };
-    }
-
-    const meals = await Meal.find(query)
-      .populate('foods')
-      .sort({ date: -1, mealTime: 1 });
-
-    res.json({ meals, error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not fetch meals' });
-  }
-});
-
-// Get a specific meal by ID
-app.get('/api/meal/:mealId', async (req, res) => {
-  try {
-    const meal = await Meal.findById(req.params.mealId)
-      .populate('foods')
-      .populate('user', 'firstName lastName email');
-
-    if (!meal) {
-      return res.status(404).json({ error: 'Meal not found' });
-    }
-
-    res.json({ meal, error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not fetch meal' });
-  }
-});
-
-// ─── Post Endpoints
-
-// Create a new post
-app.post('/api/post', async (req, res) => {
-  try {
-    const { userId, image_url, description, mealId } = req.body;
-    
-    // Verify the meal exists
-    const meal = await Meal.findById(mealId);
-    if (!meal) {
-      return res.status(404).json({ error: 'Meal not found' });
-    }
-    
-    // Verify the user exists
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const post = await Post.create({
-      user: userId,
-      image_url: image_url || null,
-      description: description || null,
-      meal: mealId,
-      date: new Date()
-    });
-    
-    // Populate the post with meal and user data
-    const populatedPost = await Post.findById(post._id)
-      .populate('meal')
-      .populate('user', 'firstName lastName profilePic');
-    
-    res.json({ post: populatedPost, error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not create post' });
-  }
-});
-
-// Get all posts for a user
-app.get('/api/posts/:userId', async (req, res) => {
-  try {
-    const posts = await Post.find({ user: req.params.userId })
-      .populate('meal')
-      .populate('user', 'firstName lastName profilePic')
-      .sort({ date: -1 });
-    
-    res.json({ posts, error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not fetch posts' });
-  }
-});
-
-// Get a specific post by ID
-app.get('/api/post/:postId', async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.postId)
-      .populate('meal')
-      .populate('user', 'firstName lastName profilePic');
-    
-    if (!post) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-    
-    res.json({ post, error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not fetch post' });
-  }
-});
-
-// Update a post
-app.put('/api/post/:postId', async (req, res) => {
-  try {
-    const { image_url, description } = req.body;
-    
-    const updatedPost = await Post.findByIdAndUpdate(
-      req.params.postId,
-      { 
-        image_url: image_url || null,
-        description: description || null
-      },
-      { new: true }
-    ).populate('meal')
-     .populate('user', 'firstName lastName profilePic');
-    
-    if (!updatedPost) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-    
-    res.json({ post: updatedPost, error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not update post' });
-  }
-});
-
-// Delete a post
-app.delete('/api/post/:postId', async (req, res) => {
-  try {
-    const deletedPost = await Post.findByIdAndDelete(req.params.postId);
-    
-    if (!deletedPost) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-    
-    res.json({ message: 'Post deleted successfully', error: '' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not delete post' });
-  }
-});
-
 // ─── Test endpoint for Cloudinary
 app.get('/api/test-cloudinary', (req, res) => {
   res.json({
@@ -620,17 +530,10 @@ app.get('/api/test-cloudinary', (req, res) => {
 app.get('/api/test-users', async (req, res) => {
   try {
     const userCount = await User.countDocuments();
-    const users = await User.find({}).select('firstName lastName email profilePic bio');
+    const users = await User.find({}).select('firstName lastName email profilePic bio -_id').limit(5);
     res.json({
       userCount,
-      users: users.map(u => ({
-        id: u._id,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        email: u.email,
-        profilePic: u.profilePic,
-        bio: u.bio
-      })),
+      users,
       error: ''
     });
   } catch (err) {
@@ -653,4 +556,4 @@ mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
   .catch((err) => {
     console.error('❌ Database connection error:', err);
     process.exit(1);
-  });
+  }); 

@@ -1,21 +1,9 @@
-const mongoose = require('mongoose');
+// models/Network.js
+const { Schema } = require('mongoose');
+const ufnConn = require('../db');
 
-const networkSchema = new mongoose.Schema({
-  followerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  followingId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  }
-}, {
-  timestamps: true
-});
-
-// Ensure a user can't follow the same person twice
-networkSchema.index({ followerId: 1, followingId: 1 }, { unique: true });
-
-module.exports = mongoose.model('Network', networkSchema); 
+module.exports = ufnConn.model('Network', new Schema({
+  followerId:  { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  followingId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt:   { type: Date, default: Date.now }
+})); 
