@@ -182,6 +182,7 @@ async function seedFood() {
       fats:       { type: Number, required: true },
       portionSize: { type: String, required: true },
       mealTime:   { type: String, enum: ['breakfast', 'lunch', 'dinner', 'snack'], required: true },
+      meal:       { type: mongoose.Schema.Types.ObjectId, ref: 'Meal' },  // NEW: Meal reference
       date:       { type: Date, default: Date.now }
     });
     

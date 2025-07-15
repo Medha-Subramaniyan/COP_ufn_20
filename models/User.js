@@ -10,5 +10,5 @@ module.exports = ufnConn.model('User', new Schema({
   profilePic: { type: String },                       // Cloudinary URL
   bio:        { type: String },
   createdAt:  { type: Date,   default: Date.now },
-  meals:      [{ type: Schema.Types.ObjectId, ref: 'Meal' }]
+  meals:      [{ type: Schema.Types.ObjectId, ref: 'Meal' }]  // NEW: Array of Meal references
 }));

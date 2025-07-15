@@ -16,7 +16,7 @@ module.exports = ufnConn.model('Food', new Schema({
     required: true,
     default: 'breakfast'
   },
-  meal: { type: require('mongoose').Schema.Types.ObjectId, ref: 'Meal' },
+  meal:        { type: Schema.Types.ObjectId, ref: 'Meal' },  // NEW: Reference to Meal
   date:        { type: Date },     // when they ate it
   createdAt:   { type: Date, default: Date.now }
 }));

@@ -24,9 +24,12 @@ A comprehensive food tracking and social networking application that allows user
    MONGODB_URI=*****
    ```
 4. Seed the database with demo data:
-   - `npm run seed-users`
-   - `npm run seed-food`
-   - `npm run seed-network`
+   - `npm run seed-users` - Create sample users
+   - `npm run seed-food` - Create individual food entries
+   - `npm run seed-meals` - Create meals with multiple foods
+   - `npm run seed-network` - Create social connections
+   - `npm run seed-posts` - Create social posts
+   - Or run all: `npm run seed-all`
 
 ### Running the Server
 Start the server with:
@@ -45,6 +48,9 @@ The server will run on port 3000 by default.
 - `GET /api/food/:userId` - Get all food entries for a user
 - `GET /api/food/:userId/meal/:mealTime` - Get foods by meal type with optional date filter
 - `GET /api/food/:userId/daily-summary` - Get daily meal summary with nutritional totals
+- `POST /api/meal` - Create a meal with multiple foods
+- `GET /api/meals/:userId` - Get all meals for a user (optionally filter by date)
+- `GET /api/meal/:mealId` - Get specific meal with populated foods
 
 ### Social Features
 - `POST /api/follow` - Follow a user
