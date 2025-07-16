@@ -9,4 +9,7 @@ const MealSchema = new Schema({
   foods:    [{ type: Schema.Types.ObjectId, ref: 'Food' }]
 });
 
+// Compound index for efficient querying by user, date, and mealTime
+MealSchema.index({ user: 1, date: 1, mealTime: 1 });
+
 module.exports = mongoose.model('Meal', MealSchema); 
